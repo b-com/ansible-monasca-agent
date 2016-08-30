@@ -9,3 +9,4 @@ skip_install: False
 monasca_virtualenv_dir: /opt/monasca
 pip_conf_dir: ~/.pip
 run_mode: Deploy
+pip_version: LATEST

@@ -1,17 +1,61 @@
 ---
 # ©Copyright 2015-2016 Hewlett Packard Enterprise Development Company, LP
 
+- name: Check if pip is already installed
+  command: "pip --version"
+  ignore_errors: true
+  changed_when: false
+  register: pip_not_installed
+  changed_when: false
+
+- name: Download pip
+  get_url: url=https://bootstrap.pypa.io/get-pip.py dest=/var/tmp
+  when: pip_not_installed.rc != 0
+
+- name: Install pip
+  command: "python /var/tmp/get-pip.py"
+  when: pip_not_installed.rc != 0
+
+- name: delete get-pip.py
+  file: state=absent path=/var/tmp/get-pip.py
+  when: pip_not_installed.rc != 0
+
+- name: check to see if pip is installed at the correct version
+  shell: "pip --version | awk '{print $2}'"
+  register: pip_installed_version
+  changed_when: false
+  when: pip_version != None or pip_version != "LATEST"
+
+- name: install required version of pip
+  command: "pip install pip=={{ pip_version }}"
+  when: pip_version != None and pip_installed_version.stdout != pip_version and pip_version != "LATEST"
+
+- name: Upgrade to latest version of pip
+  command: "pip install -U pip"
+  register: pip_latest_output
+  changed_when: pip_latest_output.stdout.find('Requirement already up-to-date') == -1
+  when: pip_version == None or pip_version == "LATEST"
+
 - include: pip_index.yml
 
 - name: Install deps to avoid pip doing compilation or enable it
   apt: name={{item}} state=present
   with_items: dependencies_deb
   when: ansible_os_family == 'Debian'
-  
+
 - name: Install rpms to avoid pip doing compilation or enable it
   yum: name={{item}} state=present
   with_items: dependencies_rpm
   when: ansible_os_family == 'RedHat'
+
+- name: check if virtualenv is installed
+  shell: "virtualenv --version"
+  failed_when: false
+  register: virtualenv_installed
+
+- name: Install virtualenv
+  command: "pip install virtualenv"
+  when: virtualenv_installed.stderr.find('not found')
 
 - name: Upgrade pip in virtualenv
   pip: name=pip version=7.1.2 virtualenv="{{monasca_virtualenv_dir}}"
@@ -29,3 +73,6 @@
 - name: pip install psutil==3.0.1
   pip: name=psutil version=3.0.1 virtualenv="{{monasca_virtualenv_dir}}"
   notify: run monasca-setup
+
+# workaround (https://bugs.launchpad.net/monasca/+bug/1585924)
+- shell: rm -f /opt/monasca/lib/python2.7/site-packages/monasca_setup/detection/plugins/vcenter.py
